@@ -1,16 +1,50 @@
+/*	Recipes API
+
+This is a sample recipes API. You can find out more about the
+API at https://github.com/mailwilliams/recipes-api
+
+Schemes: http
+Host: localhost:8080
+BasePath: /
+Version: 1.0.0
+Contact:
+	Liam Williams
+	<liamwilliams1218@gmail.com>
+
+Consumes:
+	- application/json
+
+Produces:
+	- application/json
+
+swagger:meta
+*/
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"github.com/gin-gonic/gin"
 	"github.com/rs/xid"
+	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/mongo"
+	"go.mongodb.org/mongo-driver/mongo/options"
+	"go.mongodb.org/mongo-driver/mongo/readpref"
 	"io/ioutil"
+	"log"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 )
 
-var recipes []Recipe
+var (
+	recipes    []Recipe
+	ctx        context.Context
+	err        error
+	client     *mongo.Client
+	collection *mongo.Collection
+)
 
 type Recipe struct {
 	ID           string    `json:"id"`
@@ -38,6 +72,24 @@ func NewRecipeHandler(c *gin.Context) {
 }
 
 func ListRecipesHandler(c *gin.Context) {
+	cur, err := collection.Find(ctx, bson.M{})
+	if err != nil {
+		errorResponse(c, http.StatusInternalServerError, err)
+		return
+	}
+	defer func() {
+		_ = cur.Close(ctx)
+	}()
+	recipes := make([]Recipe, 0)
+	for cur.Next(ctx) {
+		var recipe Recipe
+		err = cur.Decode(&recipe)
+		if err != nil {
+			errorResponse(c, http.StatusInternalServerError, err)
+			return
+		}
+		recipes = append(recipes, recipe)
+	}
 	c.JSON(http.StatusOK, recipes)
 }
 
@@ -124,4 +176,20 @@ func init() {
 	recipes = make([]Recipe, 0)
 	file, _ := ioutil.ReadFile("recipes.json")
 	_ = json.Unmarshal([]byte(file), &recipes)
+	ctx = context.Background()
+	client, err = mongo.Connect(
+		ctx,
+		options.Client().ApplyURI(os.Getenv("MONGO_URI")),
+	)
+	if err = client.Ping(context.TODO(), readpref.Primary()); err != nil {
+		log.Fatal(err)
+	}
+	collection = client.Database(os.Getenv("MONGO_DATABASE")).Collection("recipes")
+	log.Println("Connected to MongoDB")
+}
+
+func errorResponse(c *gin.Context, statusCode int, err error) {
+	c.JSON(statusCode, gin.H{
+		"error": err.Error(),
+	})
 }
