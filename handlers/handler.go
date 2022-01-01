@@ -132,6 +132,22 @@ func (handler *RecipesHandler) SearchRecipesHandler(c *gin.Context) {
 	c.JSON(http.StatusOK, recipes)
 }
 
+func (handler *RecipesHandler) GetRecipeByIDHandler(c *gin.Context) {
+	id := c.Param("id")
+	objectId, err := primitive.ObjectIDFromHex(id)
+	if err != nil {
+		utils.ErrorResponse(c, http.StatusInternalServerError, err)
+		return
+	}
+	var recipe models.Recipe
+	if err := handler.collection.FindOne(handler.ctx, bson.M{
+		"_id": objectId,
+	}).Decode(&recipe); err != nil {
+		utils.ErrorResponse(c, http.StatusNotFound, err)
+	}
+	c.JSON(http.StatusOK, recipe)
+}
+
 func (handler *RecipesHandler) UpdateRecipeHandler(c *gin.Context) {
 	id := c.Param("id")
 	var recipe models.Recipe

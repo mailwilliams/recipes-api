@@ -43,26 +43,35 @@ var (
 
 func main() {
 	router := gin.Default()
-	router.GET(
-		"/recipes",
-		recipesHandler.ListRecipesHandler,
-	)
-	router.GET(
-		"/recipes/search",
-		recipesHandler.SearchRecipesHandler,
-	)
-	router.POST(
-		"/recipes",
-		recipesHandler.NewRecipeHandler,
-	)
-	router.PUT(
-		"/recipes/:id",
-		recipesHandler.UpdateRecipeHandler,
-	)
-	router.DELETE(
-		"/recipes/:id",
-		recipesHandler.DeleteRecipeHandler,
-	)
+	authorized := router.Group("/")
+	authorized.Use(handlers.AuthMiddleWare())
+	{
+		authorized.GET(
+			"/recipes",
+			recipesHandler.ListRecipesHandler,
+		)
+		authorized.GET(
+			"/recipes/search",
+			recipesHandler.SearchRecipesHandler,
+		)
+		authorized.GET(
+			"/recipes/:id",
+			recipesHandler.GetRecipeByIDHandler,
+		)
+		authorized.POST(
+			"/recipes",
+			recipesHandler.NewRecipeHandler,
+		)
+		authorized.PUT(
+			"/recipes/:id",
+			recipesHandler.UpdateRecipeHandler,
+		)
+		authorized.DELETE(
+			"/recipes/:id",
+			recipesHandler.DeleteRecipeHandler,
+		)
+	}
+
 	_ = router.Run()
 }
 
@@ -85,7 +94,7 @@ func init() {
 	})
 	status := redisClient.Ping()
 	fmt.Println(status)
-	
+
 	recipesHandler = handlers.NewRecipesHandler(
 		ctx,
 		client.
