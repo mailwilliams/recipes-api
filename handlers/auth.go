@@ -5,13 +5,14 @@ import (
 	"crypto/sha256"
 	"errors"
 	"github.com/dgrijalva/jwt-go"
+	"github.com/gin-contrib/sessions"
 	"github.com/gin-gonic/gin"
 	"github.com/mailwilliams/recipes-api/models"
 	"github.com/mailwilliams/recipes-api/utils"
+	"github.com/rs/xid"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
 	"net/http"
-	"os"
 	"time"
 )
 
@@ -29,15 +30,11 @@ func NewAuthHandler(ctx context.Context, collection *mongo.Collection) *AuthHand
 
 func (handler *AuthHandler) AuthMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		tokenValue := c.GetHeader("Authorization")
-		claims := &Claims{}
-		token, err := jwt.ParseWithClaims(tokenValue, claims,
-			func(token *jwt.Token) (interface{}, error) {
-				return []byte(os.Getenv("JWT_SECRET")), nil
-			},
-		)
-		if err != nil || token == nil || !token.Valid {
-			c.AbortWithStatus(http.StatusUnauthorized)
+		session := sessions.Default(c)
+		sessionToken := session.Get("token")
+		if sessionToken == nil {
+			utils.ErrorResponse(c, http.StatusForbidden, errors.New("not logged"))
+			c.Abort()
 		}
 		c.Next()
 	}
@@ -75,58 +72,32 @@ func (handler *AuthHandler) SignInHandler(c *gin.Context) {
 		return
 	}
 
-	expirationTime := time.Now().Add(10 * time.Minute)
-	claims := &Claims{
-		Username: user.Username,
-		StandardClaims: jwt.StandardClaims{
-			ExpiresAt: expirationTime.Unix(),
-		},
-	}
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	tokenString, err := token.SignedString([]byte(os.Getenv("JWT_SECRET")))
-	if err != nil {
+	sessionToken := xid.New().String()
+	session := sessions.Default(c)
+	session.Set("token", sessionToken)
+	if err := session.Save(); err != nil {
 		utils.ErrorResponse(c, http.StatusInternalServerError, err)
 		return
 	}
-
-	c.JSON(http.StatusOK, JWTOutput{
-		Token:   tokenString,
-		Expires: expirationTime,
-	})
+	c.JSON(http.StatusOK, gin.H{"message": "User signed in"})
 }
 
 func (handler *AuthHandler) RefreshHandler(c *gin.Context) {
-	tokenValue := c.GetHeader("Authorization")
-	claims := &Claims{}
-	token, err := jwt.ParseWithClaims(tokenValue, claims,
-		func(token *jwt.Token) (interface{}, error) {
-			return []byte(os.Getenv("JWT_SECRET")), nil
-		},
-	)
-	if err != nil {
-		utils.ErrorResponse(c, http.StatusUnauthorized, err)
+	session := sessions.Default(c)
+	sessionToken := session.Get("token")
+	if sessionToken == nil {
+		utils.ErrorResponse(c, http.StatusForbidden, errors.New("not logged"))
 		return
 	}
-	if token == nil || !token.Valid {
-		utils.ErrorResponse(c, http.StatusUnauthorized, errors.New("invalid token"))
-		return
-	}
-	if time.Unix(claims.ExpiresAt, 0).Sub(time.Now()) > 30*time.Second {
-		utils.ErrorResponse(c, http.StatusInternalServerError, errors.New("token not expired yet"))
-		return
-	}
-	expirationTime := time.Now().Add(5 * time.Minute)
-	claims.ExpiresAt = expirationTime.Unix()
-	token = jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	tokenString, err := token.SignedString(os.Getenv("JWT_SECRET"))
-	if err != nil {
+
+	sessionToken = xid.New().String()
+	session.Set("token", sessionToken)
+	if err := session.Save(); err != nil {
 		utils.ErrorResponse(c, http.StatusInternalServerError, err)
 		return
 	}
-	c.JSON(http.StatusOK, JWTOutput{
-		Token:   tokenString,
-		Expires: expirationTime,
-	})
+
+	c.JSON(http.StatusOK, gin.H{"message": "User token refreshed"})
 }
 
 func (handler *AuthHandler) SignUpHandler(c *gin.Context) {
@@ -167,22 +138,12 @@ func (handler *AuthHandler) SignUpHandler(c *gin.Context) {
 		return
 	}
 
-	expirationTime := time.Now().Add(10 * time.Minute)
-	claims := &Claims{
-		Username: user.Username,
-		StandardClaims: jwt.StandardClaims{
-			ExpiresAt: expirationTime.Unix(),
-		},
-	}
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	tokenString, err := token.SignedString([]byte(os.Getenv("JWT_SECRET")))
-	if err != nil {
+	sessionToken := xid.New().String()
+	session := sessions.Default(c)
+	session.Set("token", sessionToken)
+	if err := session.Save(); err != nil {
 		utils.ErrorResponse(c, http.StatusInternalServerError, err)
 		return
 	}
-
-	c.JSON(http.StatusCreated, JWTOutput{
-		Token:   tokenString,
-		Expires: expirationTime,
-	})
+	c.JSON(http.StatusOK, gin.H{"message": "User signed up"})
 }
